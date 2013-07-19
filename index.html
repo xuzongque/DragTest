@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, height=device-height, initial-scale=1.0, user-scalable=0">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta charset="UTF-8">
+    <title></title>
+    <style>
+        #rightUL li{
+            border: 2px;
+            padding : 2px;
+        }
+
+        .compatible{
+            background: lavenderblush;
+        }
+    </style>
+
+
+</head>
+<body>
+    <script type="text/template" id="simpleTestModelTemplate">
+        <p dataId="<%= id %>"><%= text %></p>
+    </script>
+
+    <script type="text/template" id="simpleTestCollectionTemplate">
+        <ul></ul>
+    </script>
+
+    <script src="./js/lib/jQuery-1.9.1.js"></script>
+    <script src="./js/lib/json2.js"></script>
+    <script src="./js/lib/underscore.js"></script>
+    <script src="./js/lib/backbone.js"></script>
+    <script src="./js/lib/backbone.marionette.js"></script>
+    <script src="./js/lib/jQuery-ui.js"></script>
+    <script src="./js/lib/punch.js"></script>
+
+
+    <script type="text/javascript">
+        window.onload = function(){
+            var registerDrag;
+            var rightView;
+            var SimpleTestModel = Backbone.Model.extend({
+                default: {
+                    text: 'item' + _.random(1,1000)
+                }
+            });
+
+
+            var SimpleTestCollection =  Backbone.Collection.extend({
+                model: SimpleTestModel
+
+            });
+
+            var mId = 0;
+            var simpleModels = {};
+            var getRandomCollection = function(length){
+
+                var results = new SimpleTestCollection();
+                length = length || 10;
+                var i;
+                for (i=0;i<length;i++){
+                    var model = new SimpleTestModel({
+                        id : mId,
+                        text : 'item' + mId
+                    });
+                    results.add(model);
+                    simpleModels[mId] = model;
+                    mId++;
+                }
+                return results;
+            };
+
+            var checkCompatible = function(id1,id2){
+                id1 = id1.toString();
+                id2 = id2.toString();
+                var m1 = simpleModels[id1];
+                var m2 = simpleModels[id2];
+                if (!m1 || !m2 || !m1.hasOwnProperty('id') || !m2.hasOwnProperty('id')){
+                    return false;
+                }
+
+                return ((m1.id % 10)=== (m2.id % 10));
+            };
+
+            var SingleItemView = Backbone.Marionette.ItemView.extend({
+                tagName : 'li',
+                template : '#simpleTestModelTemplate',
+
+                events : {
+                    "dblclick" : "elemClicked",
+                    "releaseDrop" : "droppedDone",
+                    "acceptDrop" : "acceptDrop",
+                    "elemHover" : "elemHover"
+                },
+
+                elemHover : function(e, id){
+                    this.trigger("highlight:clear");
+                    if (checkCompatible(this.model.get('id'),id)){
+                        this.$el.addClass("compatible");
+                    }
+                },
+
+                acceptDrop : function(e, id){
+                    this.trigger("highlight:clear");
+                    if (checkCompatible(this.model.get('id'),id)){
+                        this.trigger("add:collection", this.model.get('id').toString(), id.toString());
+                    }
+
+                },
+
+                droppedDone : function(e){
+
+                },
+
+                elemClicked : function(e){
+                    e.preventDefault();
+                    console.log(this.model.get('text') + " clicked");
+                    rightView.collection.add(this.model);
+                }
+            });
+
+            var CollectionItemView = Backbone.Marionette.CollectionView.extend({
+                itemView : SingleItemView,
+                tagName : 'ul',
+                events : {
+                    "drop" : "dropped",
+                    "over" : "hover"
+
+                },
+
+                drop : function() {
+                    console.log("something dropped on the right list");
+                },
+
+                onItemviewHighlightClear : function(){
+                    this.$el.find(".compatible").each(function(){
+                        $(this).removeClass("compatible");
+                    });
+                },
+
+                onItemviewAddCollection : function(childView, anchorId, newItemId){
+                    var idx = this.collection.indexOf(simpleModels[anchorId]) + 1;
+                    this.collection.add(simpleModels[newItemId],{
+                        at : idx
+                    });
+
+                    dragTest.trigger("refresh:right", this);
+                }
+            });
+
+
+
+
+
+            var dragTest = new Marionette.Application();
+
+            dragTest.addRegions({
+                leftRegion : "#leftDiv",
+                rightRegion : "#rightDiv"
+            });
+
+            dragTest.on("refresh:right", function(newView){
+                rightView = newView;
+                dragTest.rightRegion.show(newView);
+                registerDrag();
+            });
+
+            dragTest.on("initialize:after", function(){
+                var leftView = new CollectionItemView({
+                    collection : getRandomCollection(),
+                    id : 'leftUL',
+                    className : 'dragClass'
+
+                });
+                rightView = new CollectionItemView({
+                    collection : getRandomCollection(),
+                    id : 'rightUL',
+                    className : 'dragClass right'
+                });
+
+                dragTest.leftRegion.show(leftView);
+                dragTest.rightRegion.show(rightView);
+                registerDrag();
+            });
+
+            registerDrag = function(){
+                $( "#leftUL li" ).draggable({
+                    revert : "invalid",
+                    helper : "clone",
+                    stop : function(event, ui){
+                        //alert("stop");
+                        $(document).find(".compatible").each(function(){
+                            $(this).removeClass("compatible");
+                        });
+                    }
+                });
+                $( "#rightUL li").droppable({
+                    accept: "#leftUL li",
+                    drop: function(event, ui) {
+                        // do something with the dock
+                        //console.log("trigger drop droppable");
+                        $(this).trigger("acceptDrop", $(ui.draggable).children().attr('dataid'));
+
+                        // do something with the draggable item
+                        //console.log("trigger drop draggable");
+                        $(ui.draggable).trigger("releaseDrop");
+
+
+                    },
+
+                    over: function(event, ui){
+                        //console.log("element hover ");
+                        //console.log("upper element: " );
+                        //console.log($(this).children().attr('dataid'));
+                        //console.log("down element: " );
+                        //console.log($(ui.draggable).children().attr('dataid'));
+                        $(this).trigger("elemHover", $(ui.draggable).children().attr('dataid'));
+                    }
+                });
+                $( "#rightUL").sortable({
+
+                });
+            };
+
+            dragTest.start();
+        };
+
+    </script>
+
+    <div class="container">
+        <div id="leftDiv" class="blockLeft" style="background:palegreen;border:5px black;float:left;width:50%">
+            Left
+
+        </div>
+        <div id="rightDiv" class="blockRight" style="border:5px black;float:left;width:50%">
+            Right
+
+        </div>
+
+
+
+    </div>
+
+
+
+</body>
+</html>
